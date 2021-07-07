@@ -523,7 +523,12 @@ NewSpin
   :type: ``boolean``
   :default: ``false``
 
+hfbot
+----------
+  Heat flux from the bottom of the column (W/m2).
 
+  :type: ``float``
+  :default: ``0.0``
 
 
 

@@ -39,7 +39,7 @@ def solver(a_U, a_D, a_P, b):
 
 ####!!!!
 
-def transient_solve_TR(z_edges, Z_P, nt, dt, Gamma_P, phi_0, nz_P, nz_fv, phi_s, tot_rho, c_vol, airdict=None):
+def transient_solve_TR(z_edges, Z_P, nt, dt, Gamma_P, phi_0, nz_P, nz_fv, phi_s, tot_rho, c_vol,hfbot=0.0, airdict=None):
     '''
     transient 1-d diffusion finite volume method
     :param z_edges:
@@ -167,7 +167,7 @@ def transient_solve_TR(z_edges, Z_P, nt, dt, Gamma_P, phi_0, nz_P, nz_fv, phi_s,
         bc_type = 1
         bc_u    = np.concatenate(([ bc_u_0], [bc_type]))
 
-        bc_d_0  = 0
+        bc_d_0  = -hfbot/Gamma_P[-1] #from Fourier heat conduction law and heat flux from the bottom
         bc_type = 2
         bc_d    = np.concatenate(([ bc_d_0 ], [ bc_type ]))
 
@@ -183,7 +183,7 @@ def transient_solve_TR(z_edges, Z_P, nt, dt, Gamma_P, phi_0, nz_P, nz_fv, phi_s,
         a_P[-1] = 1
         a_D[-1] = 0
         a_U[-1] = 1
-        b[-1]   = deltaZ_u[-1] * bc_d[0]
+        b[-1]   = deltaZ_d[-1] * bc_d[0] #deltaZ_u[-1] and deltaZ_d[-1] are not necesseraly equal
 
         phi_t = solver(a_U, a_D, a_P, b)
         a_P = a_U + a_D + a_P_0
