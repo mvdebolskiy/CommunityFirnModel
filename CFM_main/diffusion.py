@@ -127,9 +127,9 @@ def heatDiff(self,iii):
     tot_rho         = self.rho
     c_vol           = self.rho * c_firn
     if self.c['hfbot']: #heat flux from the bottom W/m2
-        hbot=self.c['hfbot']
-        else #heat flux from the bottom not specified
-        hbot=0.0  
+        hfbot=self.c['hfbot']
+    else:  #heat flux from the bottom not specified
+        hfbot=0.0  
     
     self.Tz         = transient_solve_TR(z_edges_vec, z_P_vec, nt, self.dt[iii], Gamma_P, phi_0, nz_P, nz_fv, phi_s, tot_rho, c_vol, hfbot)
 
