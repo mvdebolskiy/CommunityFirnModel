@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 '''
 firn_density_nospin.py
 ======================
@@ -40,6 +39,7 @@ try:
 except:
     print('You do not have the pandas python package installed.')
     print('It is used to create a running mean temperature.')
+
 from merge import mergeall #VV
 from merge import mergesurf #VV
 from merge import mergenotsurf #VV
@@ -50,7 +50,7 @@ from ModelOutputs import ModelOutputs
 
 class FirnDensityNoSpin:
     '''
-    Class for the main, transient model run. 
+    Class for the main, transient model run.
 
     Parameters
     ----------
@@ -84,16 +84,15 @@ class FirnDensityNoSpin:
                 
     :returns D_surf: diffusivity tracker
                 (unit: ???, type: array of floats)
+
     '''
 
     def __init__(self, configName, climateTS = None, NewSpin = False):
         '''
-        Sets up the initial spatial grid, time grid, accumulation rate, age, 
-        density, mass, stress, temperature, and diffusivity of the model run
+        Sets up the initial spatial grid, time grid, accumulation rate, age, density, mass, stress, temperature, and diffusivity of the model run
+        :param configName: name of json config file containing model configurations
         
-        :param configName: name of json config file containing model configurations       
         '''
-
         ### load in json config file and parses the user inputs to a dictionary
         
         with open(configName, "r") as f:
@@ -106,6 +105,7 @@ class FirnDensityNoSpin:
             if self.c['timesetup']=='exact':
                 if climateTS != None:
                     self.c['stpsPerYear'] = 1/np.mean(np.diff(climateTS['time']))
+                    print('stepsperyear:', self.c['stpsPerYear'])
                 else:
                     input_bdot, input_year_bdot = read_input(os.path.join(self.c['InputFileFolder'],self.c['InputFileNamebdot']))
                     self.c['stpsPerYear'] = 1/np.mean(np.diff(input_year_bdot))
@@ -169,7 +169,6 @@ class FirnDensityNoSpin:
                 if self.c['heatDiff']:
                     print('"heatDiff" should be false for manualT runs. Run will continue.')
         except:
-            # print('"manualT" not in .json; run will continue with original model behavior')
             self.c['manualT'] = False 
 
         if self.c['manualT']:
@@ -185,7 +184,10 @@ class FirnDensityNoSpin:
 
         else:
             if climateTS != None:
-                start_ind = np.where(climateTS['time']>=updatedStartDate)[0][0]
+                if updatedStartDate is not None:
+                    start_ind = np.where(climateTS['time']>=updatedStartDate)[0][0]
+                else:
+                    start_ind = 0
                 input_temp = climateTS['TSKIN'][start_ind:]
                 input_year_temp = climateTS['time'][start_ind:]
                 
@@ -240,7 +242,7 @@ class FirnDensityNoSpin:
             if 'liquid' not in self.c:
                 print('Melt is on, but you did not specify which perolation scheme in the .json')
                 print('Defaulting to original CFM bucket scheme')
-                self.c['liquid'] = 'bucketVV'
+                self.c['liquid'] = 'bucket'
         else:
             self.MELT           = False
             # print("Melt is not turned on.")
@@ -271,11 +273,10 @@ class FirnDensityNoSpin:
             self.stp        = int(self.years * S_PER_YEAR/self.dt)#-1       # total number of time steps, as integer
             self.dt = self.dt * np.ones(self.stp)
             # self.modeltime  = np.linspace(yr_start, yr_end, self.stp + 1)   # vector of time of each model step
-            self.modeltime  = np.linspace(yr_start, yr_end, self.stp)
+            self.modeltime  = np.linspace(yr_start, yr_end, self.stp+1)[:-1]
             # self.t          = 1.0 / self.c['stpsPerYear']                   # years per time step
             self.t = (1.0 / self.c['stpsPerYear']) * np.ones_like(self.dt)
             init_time = -9999.0
-
 
         elif self.c['timesetup']=='exact':
             # print('"Exact" time setup will not work properly if input forcing does not all have the same time')
@@ -329,7 +330,6 @@ class FirnDensityNoSpin:
         ### temperature, accumulation, melt, isotopes, surface density
         ###############################
         int_type            = self.c['int_type']
-        # print('Climate interpolation method is %s' %int_type)
 
         ### Temperature #####       
         Tsf                 = interpolate.interp1d(input_year_temp,input_temp,int_type,fill_value='extrapolate') # interpolation function
@@ -359,9 +359,6 @@ class FirnDensityNoSpin:
         self.bdot[self.bdot<1e-6] = 0.0
         
         self.bdotSec        = self.bdot / S_PER_YEAR / (S_PER_YEAR/self.dt) # accumulation at each time step (meters i.e. per second). gets multiplied by S_PER_YEAR later. (sort of hacky, I know)
-        
-        #old way:    
-        # self.bdotSec        = self.bdot / S_PER_YEAR / self.c['stpsPerYear'] # accumulation for each time step (meters i.e. per second)
 
         try: #Rolling mean average surface temperature and accumulation rate (vector)
         # (i.e. the long-term average climate)
@@ -406,7 +403,7 @@ class FirnDensityNoSpin:
             ssf                 = interpolate.interp1d(input_year_snowmelt,input_snowmelt,int_type,fill_value='extrapolate')
             self.snowmelt       = ssf(self.modeltime)
             self.snowmeltSec    = self.snowmelt / S_PER_YEAR / (S_PER_YEAR/self.dt) # melt for each time step (meters i.e. per second)
-            self.c[LWCheat] = 'enthalpy' # Filler for future testing.
+            self.c['LWCheat'] = 'enthalpy' # Filler for future testing.
 
             if self.c['RAIN'] == True: ##VV use rain climatic input
                 rsf             = interpolate.interp1d(input_year_rain,input_rain,int_type,fill_value='extrapolate')
@@ -437,7 +434,7 @@ class FirnDensityNoSpin:
         #####
         try:
             if self.c['no_densification']:
-                print('CAUTION: densification if OFF!')
+                print('CAUTION: densification is OFF!')
             else:
                 pass
         except:
@@ -462,12 +459,12 @@ class FirnDensityNoSpin:
 
         ###############################
         ### set up vector of times data will be written
-        try:
-            Tind                = np.nonzero(self.modeltime>=self.c['TWriteStart'])[0][0]
-        except Exception:
-            Tind                = np.nonzero(self.modeltime>=1980.0)[0][0] # old way
-            print('You should add new variable "TWriteStart" to the json file!')
-            print('Arbitrarily starting writing at 1980.0. See line 243 in firn_density_nospin.py')
+        if 'TWriteStart' not in self.c:
+            print('You should add variable "TWriteStart" to the json file!')
+            print('Writing at all time steps (results in large output)')
+            self.c['TWriteStart'] = self.modeltime[0]
+
+        Tind                = np.nonzero(self.modeltime>=self.c['TWriteStart'])[0][0]
         self.TWrite         = self.modeltime[Tind::self.c['TWriteInt']]
         if self.TWrite[-1]!=self.modeltime[-1]:
             print('Adding last time step to Twrite')
@@ -476,17 +473,6 @@ class FirnDensityNoSpin:
             print('Time writing interval is not 1; dH output will not be accurate.')
         TWlen               = len(self.TWrite) #- 1
         self.WTracker       = 1
-
-        ### you can choose to write certain fields at different times.
-        ### (Functionality not fully tested) 
-        # Tind2                 = np.nonzero(self.modeltime>=1958.0)[0][0]
-        # self.TWrite2      = self.modeltime[Tind2::self.c['TWriteInt']]
-        # self.TWrite       = np.append(self.modeltime[10],self.TWrite)
-        # self.TWrite2      = self.modeltime[0::self.c['TWriteInt']]
-        # self.TWrite_out   = self.TWrite
-        # TWlen2            = len(self.TWrite2) #- 1
-        # self.WTracker2        = 1
-        ###############################
 
         ### set up initial mass, stress, and mean accumulation rate
         self.mass           = self.rho * self.dz
@@ -525,13 +511,16 @@ class FirnDensityNoSpin:
         ### Additional melt outputs ###
         ### which of these should go to output?
         if self.MELT:
-            self.runoff         = np.array([0.]) #total runoff, single value for the whole firn column
+            self.Trunoff         = np.array([0.]) #total runoff, single value for the whole firn column
             self.refrozen       = np.zeros_like(self.dz) #vrefreezing in every layer, array of size of our grid
             self.totalrunoff    = np.array([0.]) # Might be useful to have a total final value without having to write every time step
             self.totalrefrozen  = np.zeros_like(self.dz) # Might be useful to have a total final value without having to write every time step
             self.totwatersublim = 0. #VV Total amount of liquid water that get sublimated
             self.lwcerror       = 0. #VV
             self.totallwcerror  = 0. #
+            #VV update (23/03/2021)
+            self.refreeze = np.array([0.]) #total liquid water refreezing at each time step [m we]
+            self.runoff     = np.array([0.]) #total liquid water runoff at each time step [m we]
 
         ### initial grain growth (if specified in config file)
         if self.c['physGrain']:
@@ -592,7 +581,6 @@ class FirnDensityNoSpin:
         each gas of interest gets its own instance of the class, each instance
         is stored in a dictionary
         '''
-
         if self.c['FirnAir']:
             print('Firn air initialized')
             with open(self.c['AirConfigName'], "r") as f:
@@ -675,17 +663,27 @@ class FirnDensityNoSpin:
         ######################################
         if 'grid_outputs' not in self.c:
             self.c['grid_outputs'] = False
+        # if ((self.c['grid_outputs']) and (self.MELT)):
+        #     print('grid_outputs currently not supported with melt')
+        #     print('Switching to non-gridded outputs')
+        #     self.c['grid_outputs'] = False
         rep_dict = {'density':'rho', 'temperature':'Tz', 'depth':'z', 'dcon':'Dcon', 'temp_Hx':'Hx'} #mapping names from output list to variables in CFM
         self.output_list = [rep_dict.get(n, n) for n in self.c['outputs']]
         if 'grainsize' in self.c['outputs']:
             self.output_list.remove('grainsize')
             self.output_list.append('r2')
             # self.output_list.append('dr2_dt')
+        if ((self.MELT) and ('meltoutputs' not in self.c['outputs'])):
+            self.c['outputs'].append('meltoutputs')
+            self.output_list.append('meltoutputs')
+            print('Added meltoutputs to model output list.')
         if 'meltoutputs' in self.c['outputs']: # Need to work with Vincent on what should be here.
             self.output_list.remove('meltoutputs')
-            self.output_list.append('runoff') # This is cumulative for each time step
-            self.output_list.append('refrozen') # Should this be in each grid point, or total?
-              
+            # self.output_list.append('Trunoff') # This is cumulative for each time step
+            # self.output_list.append('refrozen') # Should this be in each grid point, or total?
+            self.output_list.append('refreeze') #VV (23/03/2021)
+            self.output_list.append('runoff') #VV (23/03/2021)
+        
         if ((not self.MELT) and ('LWC' in self.output_list)):
             self.output_list.remove('LWC')
         if ((not self.c['FirnAir']) and ('gasses' in self.output_list)):
@@ -734,30 +732,36 @@ class FirnDensityNoSpin:
 
     def time_evolve(self):
         '''
+
         Evolve the spatial grid, time grid, accumulation rate, age, density, mass, stress, temperature, and diffusivity through time
         based on the user specified number of timesteps in the model run. Updates the firn density using a user specified 
         
-        Writes to hdf file at end.
         '''
-
         self.steps = 1 / np.mean(self.t) # steps per year
         start_time=time.time() # this is a timer to keep track of how long the model run takes.
 
         if self.c['spinUpdate']:
             indUpdate = np.where(self.modeltime>=self.c['spinUpdateDate'])[0][0]
+
+        # VV (23/03/2021) checking that refreeze and runoff work fine
+        if self.MELT:
+            refreezing2check = np.zeros(self.stp)
+            runoff2check     = np.zeros(self.stp)
         
         ####################################
         ##### START TIME-STEPPING LOOP #####
         ####################################
 
         print('modeltime',self.modeltime[0],self.modeltime[-1])
-        # print('stp',self.stp)
         for iii in range(self.stp):
             mtime = self.modeltime[iii]
             self.D_surf[iii] = iii
             if iii==1000:
-                ntime = time.time()
-                print('estimated model run time (seconds):', self.stp*(ntime-start_time)/1000)
+                if ((self.MELT) and (self.c['liquid']=='darcy')):
+                    pass
+                else:
+                    ntime = time.time()
+                    print('estimated model run time (seconds):', self.stp*(ntime-start_time)/1000)
 
             ### Merging process #VV ###
             if self.c['merging']: # merging may be deprecated (check with VV)
@@ -856,26 +860,65 @@ class FirnDensityNoSpin:
             if self.THist:
                 self.Hx = RD['Hx']
 
-            # self.Tz = np.concatenate(([self.Ts[iii]], self.Tz[1:]))
-
             ######################
             ### MELT #############
             if self.MELT:
-                if self.c['liquid'] == 'prefsnowpack':
+                if ((iii==0) and ((self.c['liquid'] == 'prefsnowpack') or (self.c['liquid'] == 'resingledomain'))):
+                    print('WARNING: prefsnowpack and resingledomain liquid schemes are still in development. email Max for more details.')
+                
+                if self.c['liquid'] == 'bucket':
+                    if (self.snowmeltSec[iii]>0) or (np.any(self.LWC > 0.)) or (self.rainSec[iii] > 0.): #i.e. there is water
+                        self.rho, self.age, self.dz, self.Tz, self.r2, self.z, self.mass, self.dzn, self.LWC, meltgridtrack, self.refreeze, self.runoff = bucket(self,iii)
+                        if self.doublegrid==True: # if we use doublegrid -> use the gridtrack corrected for melting
+                            self.gridtrack = np.copy(meltgridtrack)
+                    else: # Dry firn column and no input of meltwater                        
+                        self.dzn     = self.dz[0:self.compboxes] # Not sure this is necessary
+                        self.refreeze, self.runoff = 0.,0.
+                    ### Heat ###
+                    if np.all(self.LWC==0.): #VV regular heat diffusion if no water in column (all refrozen or 0 water holding cap)
+                        self.Tz, self.T10m  = heatDiff(self,iii)
+                    elif np.any(self.LWC>0.): #VV enthalpy diffusion if water in column
+                        LWC0e = sum(self.LWC)
+                        self.Tz, self.T10m, self.rho, self.mass, self.LWC = enthalpyDiff(self,iii)
+                        self.refreeze += LWC0e-sum(self.LWC)
+                ### end bucket ##################
+
+                elif self.c['liquid'] == 'darcy':
+                    if (self.snowmeltSec[iii]>0) or (np.any(self.LWC > 0.)) or (self.rainSec[iii] > 0.): #i.e. there is water
+                        ### Use Darcy scheme only after spin-up period to reduce computational time ###
+                        if self.modeltime[iii]<1980:
+                            self.rho, self.age, self.dz, self.Tz, self.r2, self.z, self.mass, self.dzn, self.LWC, meltgridtrack, self.refreeze, self.runoff = bucket(self,iii)
+                        elif self.modeltime[iii]>=1980:
+                            self.rho, self.age, self.dz, self.Tz, self.r2, self.z, self.mass, self.dzn, self.LWC, meltgridtrack, self.refreeze, self.runoff = darcyscheme(self,iii)
+                        if self.doublegrid==True: # if we use doublegrid -> use the gridtrack corrected for melting
+                            self.gridtrack = np.copy(meltgridtrack)
+                    else: # Dry firn column and no input of meltwater                       
+                        self.refreeze, self.runoff = 0.,0.
+                        self.dzn     = self.dz[0:self.compboxes] # Not sure this is necessary
+                    ### Heat ###
+                    if np.all(self.LWC==0.): #VV regular heat diffusion if no water in column (all refrozen or 0 water holding cap)
+                        self.Tz, self.T10m  = heatDiff(self,iii)
+                    elif np.any(self.LWC>0.): #VV enthalpy diffusion if water in column
+                        LWC0e = sum(self.LWC)
+                        self.Tz, self.T10m, self.rho, self.mass, self.LWC = enthalpyDiff(self,iii)
+                        self.refreeze += LWC0e-sum(self.LWC)
+                ### end darcy ##################               
+
+                elif self.c['liquid'] == 'prefsnowpack':
                     #VV You can choose a date to switch from bucket to prefflow, this should be easy to use from the json file
                     if self.modeltime[iii] >= 1980: # Apply dualperm from a certain date
                         if ((self.snowmeltSec[iii]>0.) or (np.any(self.LWC > 0.)) or (self.rainSec[iii] > 0.)): #i.e. there is water
-                            self.rho, self.age, self.dz, self.Tz, self.z, self.mass, self.dzn, self.LWC, self.PLWC_mem, self.r2, self.refrozen, self.runoff = prefflow(self,iii)
+                            self.rho, self.age, self.dz, self.Tz, self.z, self.mass, self.dzn, self.LWC, self.PLWC_mem, self.r2, self.refrozen, self.Trunoff = prefflow(self,iii)
                         else: #Dry firn column and no input of meltwater                            
-                            self.runoff     = np.array([0.]) #VV no runoff
+                            self.Trunoff     = np.array([0.]) #VV no runoff
                             self.refrozen   = np.zeros_like(self.dz) #VV no refreezing
                             self.dzn        = self.dz[0:self.compboxes] # Not sure this is necessary
                     elif self.modeltime[iii] < 1980: # Apply bVV until a certain date
                         if (self.snowmeltSec[iii]>0) or (np.any(self.LWC > 0.) or (self.rainSec[iii] > 0.)): #i.e. there is water
-                            self.rho, self.age, self.dz, self.Tz, self.r2, self.z, self.mass, self.dzn, self.LWC, self.refrozen, self.runoff, self.lwcerror = bucketVV(self,iii)
+                            self.rho, self.age, self.dz, self.Tz, self.r2, self.z, self.mass, self.dzn, self.LWC, self.refrozen, self.Trunoff, self.lwcerror = bucket(self,iii)
                         else:
                             #Dry firn column and no input of meltwater
-                            self.runoff     = np.array([0.]) #VV no runoff
+                            self.Trunoff     = np.array([0.]) #VV no runoff
                             self.refrozen   = np.zeros_like(self.dz) #VV no refreezing
                             self.dzn        = self.dz[0:self.compboxes] # Not sure this is necessary
                     ### Heat ###        
@@ -886,69 +929,23 @@ class FirnDensityNoSpin:
                     #VV You can choose a date to switch from bucket to prefflow, this should be easy to use from the json file
                     if self.modeltime[iii] >= 1980: # Apply dualperm from a certain date
                         if ((self.snowmeltSec[iii]>0.) or (np.any(self.LWC > 0.)) or (self.rainSec[iii] > 0.)): #i.e. there is water
-                            self.rho, self.age, self.dz, self.Tz, self.z, self.mass, self.dzn, self.LWC, self.PLWC_mem, self.r2, self.refrozen, self.runoff = resingledomain(self,iii)
+                            self.rho, self.age, self.dz, self.Tz, self.z, self.mass, self.dzn, self.LWC, self.PLWC_mem, self.r2, self.refrozen, self.Trunoff = resingledomain(self,iii)
                         else:
                             #Dry firn column and no input of meltwater
-                            self.runoff     = np.array([0.]) #VV no runoff
+                            self.Trunoff     = np.array([0.]) #VV no runoff
                             self.refrozen   = np.zeros_like(self.dz) #VV no refreezing
                             self.dzn        = self.dz[0:self.compboxes] # Not sure this is necessary
                     elif self.modeltime[iii] < 1980: # Apply bVV until a certain date
                         if (self.snowmeltSec[iii]>0) or (np.any(self.LWC > 0.) or (self.rainSec[iii] > 0.)): #i.e. there is water
-                            self.rho, self.age, self.dz, self.Tz, self.r2, self.z, self.mass, self.dzn, self.LWC, self.refrozen, self.runoff, self.lwcerror = bucketVV(self,iii)
+                            self.rho, self.age, self.dz, self.Tz, self.r2, self.z, self.mass, self.dzn, self.LWC, self.refrozen, self.Trunoff, self.lwcerror = bucket(self,iii)
                         else:
                             #Dry firn column and no input of meltwater
-                            self.runoff     = np.array([0.]) #VV no runoff
+                            self.Trunoff     = np.array([0.]) #VV no runoff
                             self.refrozen   = np.zeros_like(self.dz) #VV no refreezing
                             self.dzn        = self.dz[0:self.compboxes] # Not sure this is necessary
                     ### Heat ###
                     self.Tz, self.T10m  = heatDiff(self,iii)
                 ### end prefsnowpack ##################
-
-                elif self.c['liquid'] == 'bucketVV':
-                    if (self.snowmeltSec[iii]>0) or (np.any(self.LWC > 0.)) or (self.rainSec[iii] > 0.): #i.e. there is water
-                        #VV 09/12/2020: change output variables of bucketVV
-                        self.rho, self.age, self.dz, self.Tz, self.r2, self.z, self.mass, self.dzn, self.LWC, meltgridtrack, self.refrozen, self.runoff, self.lwcerror = bucketVV(self,iii)
-                        #VV 09/12/2020: account for changes in self.gridtrack
-                        if self.doublegrid==True: #gridtrack corrected for melting
-                            self.gridtrack = np.copy(meltgridtrack)
-
-                    else:
-                        #Dry firn column and no input of meltwater
-                        self.runoff     = np.array([0.]) #VV no runoff
-                        self.refrozen   = np.zeros_like(self.dz) #VV no refreezing
-                        self.dzn        = self.dz[0:self.compboxes] # Not sure this is necessary
-                    ### Heat ###
-                    if self.c['LWCheat']=='enthalpy':
-                        self.Tz, self.T10m, self.rho, self.mass, self.LWC = enthalpyDiff(self,iii)     
-                    else:
-                        self.Tz, self.T10m  = heatDiff(self,iii)
-                              
-                    coldlayers = np.where(self.Tz < T_MELT)
-                    # if np.any(self.LWC[coldlayers[0]]>0.):
-                        # print('Problem: water content in a cold layer')
-                ### end bucketVV ##################
-
-                elif self.c['liquid'] == 'percolation_bucket': ### Max's bucket scheme:
-                    if iii==0:
-                        print('percolation_bucket not recommended at present. Use bucketVV.')
-                    if (self.MELT and self.snowmeltSec[iii]>0): #i.e. there is melt
-                        self.rho, self.age, self.dz, self.Tz, self.z, self.mass, self.dzn, self.LWC = percolation_bucket(self,iii)
-                    else: # no melt, dz after compaction
-                        self.dzn    = self.dz[0:self.compboxes]
-                    ### Heat ###
-                    if self.c['LWCheat']=='enthalpy':
-                        self.Tz, self.T10m, self.rho, self.mass, self.LWC = enthalpyDiff(self,iii)
-                    else: # use heat
-                        if self.c['LWCheat']=='effectiveT':
-                            self.Tz, self.T10m = effectiveT(self,iii)
-
-                        else:
-                            self.Tz, self.T10m  = heatDiff(self,iii)
-                            if (self.c['LWCheat']=='LWCcorrect') or (self.c['LWCheat']=='lowK'):
-                                if iii == 0:
-                                    print('LWCcorrect is on')
-                                self.Tz, self.LWC = LWC_correct(self)
-                ### end percolation_bucket #########
 
                 if self.LWC[-1] > 0.: #VV we don't want to lose water
                     print('LWC in last layer that is going to be removed, amount is:',self.LWC[-1])
@@ -986,13 +983,12 @@ class FirnDensityNoSpin:
             ############################
 
             ### heat diffusion #########
-
             Ts_old = self.Tz[0]
 
             if (self.c['heatDiff'] and not self.MELT): # no melt, so use regular heat diffusion
                 self.Tz, self.T10m  = heatDiff(self,iii)
 
-            elif self.c['manualT']:
+            elif self.c['manualT']: # manual temperature measurements are fed into CFM
                 tif = interpolate.interp1d(self.manualT_dep, self.manualT_temp[:,iii],kind='cubic')
                 self.Tz = tif(self.z)
 
@@ -1088,9 +1084,7 @@ class FirnDensityNoSpin:
                 self.LWC        = np.concatenate(([0], self.LWC[:-1]))
 
             elif self.bdotSec[iii]<0:
-
                 self.mass_sum   = self.mass.cumsum(axis = 0)
-                
                 self.rho, self.age, self.dz, self.Tz, self.r2, self.z, self.mass, self.dzn, self.LWC, self.PLWC_mem, self.totwatersublim, sublgridtrack     = sublim(self,iii) # keeps track of sublimated water for mass conservation
                 
                 self.compaction = (self.dz_old[0:self.compboxes]-self.dzn)
@@ -1098,6 +1092,8 @@ class FirnDensityNoSpin:
                 if self.doublegrid == True: # gridtrack corrected for sublimation
                     self.gridtrack = np.copy(sublgridtrack)
                 znew = np.copy(self.z)
+                if not self.c['manualT']:
+                    self.Tz = np.concatenate(([self.Ts[iii]], self.Tz[1:]))
 
             else: # no accumulation during this time step
                 self.age        = self.age + self.dt[iii]
@@ -1185,13 +1181,18 @@ class FirnDensityNoSpin:
                 if self.gridtrack[-1]!=3: #VV works for whatever the gridtrack value we have
                     self.dz, self.z, self.rho, self.Tz, self.mass, self.sigma, self. mass_sum, self.age, self.bdot_mean, self.LWC, self.gridtrack, self.r2 = regrid22(self) #VV regrid22
 
+            #VV (23/03/2021) checking that refreeze and runoff work fine
+            if self.MELT:
+                refreezing2check[iii] = self.refreeze
+                runoff2check[iii]     = self.runoff
+
         ##################################
         ##### END TIME-STEPPING LOOP #####
         ##################################
 
-        # write_nospin_hdf5(self)
+        if self.MELT:
+            print(f'Totals\nMelt+Rain: {sum(self.snowmeltSec+self.rainSec)*S_PER_YEAR*RHO_I_MGM}\nRefreezing: {sum(refreezing2check)}\nRunoff: {sum(runoff2check)}')
         write_nospin_hdf5(self,self.MOutputs.Mout_dict)
-
 
     ###########################
     ##### END time_evolve #####

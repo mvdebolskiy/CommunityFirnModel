@@ -13,7 +13,7 @@ Distributed under terms of the MIT license.
 
 import sys
 import os
-from firn_density_spin import FirnDensitySpin
+# from firn_density_spin import FirnDensitySpin
 from firn_density_nospin import FirnDensityNoSpin
 import time
 import json
@@ -22,7 +22,7 @@ import RCMpkl_to_spin as RCM
 
 __author__ = "C. Max Stevens, Vincent Verjans, Brita Horlings, Annika Horlings, Jessica Lundin"
 __license__ = "MIT"
-__version__ = "1.1.0"
+__version__ = "1.1.2"
 __maintainer__ = "Max Stevens"
 __email__ = "maxstev@umd.edu"
 __status__ = "Production"
@@ -71,7 +71,7 @@ if __name__ == '__main__':
     if c['input_type'] == 'dataframe':
         pkl_name = os.path.join(c['InputFileFolder'],c['DFfile'])
         timeres = c['DFresample']
-        climateTS, stepsperyear, depth_S1, depth_S2, desired_depth = RCM.makeSpinFiles(pkl_name,timeres = timeres, melt = c['MELT'])
+        climateTS, stepsperyear, depth_S1, depth_S2, desired_depth = RCM.makeSpinFiles(pkl_name,timeres = timeres, melt = c['MELT'], desired_depth = 30)
     else:
         climateTS = None
 

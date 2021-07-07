@@ -25,6 +25,7 @@ import numpy as np
 from datetime import datetime, timedelta, date
 import pandas as pd
 import time
+import calendar
 import hl_analytic as hla
 
 def toYearFraction(date):
@@ -32,7 +33,7 @@ def toYearFraction(date):
     convert datetime to decimal date 
     '''
     def sinceEpoch(date): # returns seconds since epoch
-        return time.mktime(date.timetuple())
+        return calendar.timegm(date.timetuple())
     s = sinceEpoch
 
     year = date.year
@@ -55,7 +56,7 @@ def effectiveT(T):
     km  = np.mean(k)
     return Q/(R*np.log(km))
 
-def makeSpinFiles(pkl_name,timeres='1D',Tinterp='mean',spin_date_st = 1980.0, spin_date_end = 1995.0,melt=False):
+def makeSpinFiles(CLIM_name,timeres='1D',Tinterp='mean',spin_date_st = 1980.0, spin_date_end = 1995.0,melt=False,desired_depth = None):
     '''
     load a pandas dataframe, called df_CLIM, that will be resampled and then used 
     to create a time series of climate variables for spin up. 
@@ -107,28 +108,37 @@ def makeSpinFiles(pkl_name,timeres='1D',Tinterp='mean',spin_date_st = 1980.0, sp
 
     SPY = 365.25*24*3600
 
-    if type(pkl_name) == str:
-    	df_CLIM = pd.read_pickle(pkl_name)
-    else: #pkl_name is not actually a pickle, it is the dataframe being passed
-    	df_CLIM = pkl_name
+    if type(CLIM_name) == str:
+    	df_CLIM = pd.read_pickle(CLIM_name)
+    else: #CLIM_name is not a pickle, it is the dataframe being passed
+    	df_CLIM = CLIM_name
 
-    drn = {'PRECTOT':'BDOT','TS':'TSKIN'} #customize this to change your dataframe column names to match the required inputs
+    drn = {'TS':'TSKIN'} #customize this to change your dataframe column names to match the required inputs
+    # df_CLIM['RAIN'] = df_CLIM['PRECTOT'] - df_CLIM['PRECSNO']
+    # df_CLIM['BDOT'] = df_CLIM['PRECSNO'] + df_CLIM['EVAP']
     df_CLIM.rename(mapper=drn,axis=1,inplace=True)
-    
-    df_BDOT = pd.DataFrame(df_CLIM.BDOT)
+    try:
+        df_CLIM.drop(['EVAP','PRECTOT','PRECSNO'],axis=1,inplace=True)
+    except:
+        pass
+    l1 = df_CLIM.columns.values.tolist()
+    l2 = ['SMELT','BDOT','RAIN','TSKIN']
+    notin = list(np.setdiff1d(l1,l2))
+    df_CLIM.drop(notin,axis=1,inplace=True)
+    # df_BDOT = pd.DataFrame(df_CLIM.BDOT)
     df_TS = pd.DataFrame(df_CLIM.TSKIN)
 
     res_dict_all = {'SMELT':'sum','BDOT':'sum','RAIN':'sum','TSKIN':'mean'} # resample type for all possible variables
     res_dict = {key:res_dict_all[key] for key in df_CLIM.columns} # resample type for just the data types in df_CLIM
 
-    df_BDOT_re = df_BDOT.resample(timeres).sum()
+    # df_BDOT_re = df_BDOT.resample(timeres).sum()
     if Tinterp == 'mean':
         df_TS_re = df_TS.resample(timeres).mean()
     elif Tinterp == 'effective':
         df_TS_re = df_TS.resample(timeres).apply(effectiveT)
     elif Tinterp == 'weighted':
         df_TS_re = pd.DataFrame(data=(df_BDOT.BDOT*df_TS.TSKIN).resample(timeres).sum()/(df_BDOT.BDOT.resample(timeres).sum()),columns=['TSKIN'])
-        pass
+        # pass
 
     df_CLIM_re = df_CLIM.resample(timeres).agg(res_dict)
     df_CLIM_re.TSKIN = df_TS_re.TSKIN
@@ -137,9 +147,9 @@ def makeSpinFiles(pkl_name,timeres='1D',Tinterp='mean',spin_date_st = 1980.0, sp
     df_CLIM_re['decdate'] = [toYearFraction(qq) for qq in df_CLIM_re.index]
     df_CLIM_re = df_CLIM_re.fillna(method='pad')
 
-    df_TS_re['decdate'] = [toYearFraction(qq) for qq in df_TS_re.index]
-    df_BDOT_re['decdate'] = [toYearFraction(qq) for qq in df_BDOT_re.index]
-    df_TS_re = df_TS_re.fillna(method='pad')
+    # df_TS_re['decdate'] = [toYearFraction(qq) for qq in df_TS_re.index]
+    # df_BDOT_re['decdate'] = [toYearFraction(qq) for qq in df_BDOT_re.index]
+    # df_TS_re = df_TS_re.fillna(method='pad')
 
     stepsperyear = 1/(df_CLIM_re.decdate.diff().mean())
 
@@ -148,10 +158,14 @@ def makeSpinFiles(pkl_name,timeres='1D',Tinterp='mean',spin_date_st = 1980.0, sp
 
     hh  = np.arange(0,501)
     age, rho = hla.hl_analytic(350,hh,T_mean,BDOT_mean_IE)    
-    desired_depth = hh[np.where(rho>=916)[0][0]]
-    depth_S1 = hh[np.where(rho>=550)[0][0]]
-    depth_S2 = hh[np.where(rho>=750)[0][0]]
-
+    if not desired_depth:
+        desired_depth = hh[np.where(rho>=916)[0][0]]
+        depth_S1 = hh[np.where(rho>=550)[0][0]]
+        depth_S2 = hh[np.where(rho>=750)[0][0]]
+    else:
+        desired_depth = desired_depth
+        depth_S1 = desired_depth * 0.5
+        depth_S2 = desired_depth * 0.75
     #### Make spin up series ###
     RCI_length = spin_date_end-spin_date_st+1
     num_reps = int(np.round(desired_depth/BDOT_mean_IE/RCI_length))
